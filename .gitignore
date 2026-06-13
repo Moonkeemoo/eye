@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Training artifacts & data (large / regenerable)
+runs/
+datasets/
+*.zip
+
+# Pretrained weights (auto-downloaded by Ultralytics)
+yolov8*.pt
+yolo11*.pt
+
+# Secrets
+.env
+*.key
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
