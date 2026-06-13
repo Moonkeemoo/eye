@@ -145,6 +145,7 @@ python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_
 - **Як вчиться мережа?** Цикл forward → loss → backward → optimizer step. Backward рахує градієнти автоматичним диференціюванням, оптимізатор оновлює ваги.
 - **Що робить `device=0`?** Кладе обчислення на перший CUDA-GPU.
 - **Навіщо WSL2/Ubuntu?** ML-екосистема Linux-first; те саме середовище, що в продакшені й у дослідницькому коді.
+- **Що таке Roboflow / навіщо розмітка?** Модель учиться не з голих фото, а з фото + розмітка (рамка + клас). Roboflow дає розмітку, split і аугментації. Якість розмітки = стеля якості моделі: garbage in, garbage out.
 
 ---
 
@@ -169,3 +170,4 @@ python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_
 | **wheel** | Передскомпільований бінарний пакет Python; має бути під конкретну версію Python + платформу. |
 | **LTS** | Long-Term Support — стабільна версія Ubuntu з довгою підтримкою; для ML переважна над bleeding-edge. |
 | **venv** | Ізольоване Python-оточення (`~/cv`); пакети не засмічують систему. |
+| **Roboflow** | Онлайн-платформа підготовки CV-даних: розмітка (bbox), split, аугментації, експорт у формат моделі. Стоїть між «є фото» і «train.py тренує». |
