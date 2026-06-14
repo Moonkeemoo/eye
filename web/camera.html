@@ -44,7 +44,7 @@
   <h1>👁️ eye</h1>
   <nav><a href="/">📈 Навчання</a><a href="/camera" class="on">🎥 Трекінг</a></nav>
   <span id="status">готово — натисни «Увімкнути камеру»</span>
-  <span id="dbg" style="color:#8b97a7;font-size:11px;margin-left:8px">build overlay-3</span>
+  <span id="dbg" style="color:#8b97a7;font-size:11px;margin-left:8px">build overlay-4</span>
 </header>
 
 <div class="controls">
@@ -189,6 +189,7 @@ async function loop(){
   if(inflight){ requestAnimationFrame(loop); return; }
   inflight=true;
   if(video.videoWidth && Math.abs(cap.width/cap.height - video.videoWidth/video.videoHeight) > 0.02) sizeCanvases();
+  if(video.clientWidth){ overlay.style.width=video.clientWidth+"px"; overlay.style.height=video.clientHeight+"px"; }
   cctx.drawImage(video,0,0,UP_W,UP_H);
   const blob=await new Promise(r=>cap.toBlob(r,"image/jpeg",0.6));
   const fd=new FormData(); fd.append("frame",blob,"f.jpg");
@@ -202,7 +203,7 @@ async function loop(){
     document.getElementById("k_lat").textContent=Math.round(e2e);
     document.getElementById("k_gpu").textContent=j.infer_ms;
     document.getElementById("k_obj").textContent=j.dets.length;
-    document.getElementById("dbg").textContent=`build3 · vid ${video.videoWidth}×${video.videoHeight} · cap ${cap.width}×${cap.height} · disp ${overlay.clientWidth}×${overlay.clientHeight}`;
+    document.getElementById("dbg").textContent=`b4 · vid ${video.videoWidth}×${video.videoHeight} · vidDisp ${video.clientWidth}×${video.clientHeight} · ovl ${overlay.clientWidth}×${overlay.clientHeight}`;
   }catch(e){ setStatus("помилка: "+e.message); }
   finally{ inflight=false; requestAnimationFrame(loop); }
 }
