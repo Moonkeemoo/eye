@@ -271,9 +271,11 @@ def runs():
 
 
 @app.post("/train")
-def train_run(model: str = "m", epochs: int = 100, name: str = ""):
-    if model not in ("n", "s", "m"):
-        model = "m"
+def train_run(model: str = "yolov8m", epochs: int = 100, name: str = ""):
+    allowed = {"yolov8n", "yolov8s", "yolov8m", "yolo11n", "yolo11s", "yolo11m",
+               "yolo26n", "yolo26s", "yolo26m"}
+    if model not in allowed:
+        model = "yolov8m"
     epochs = max(10, min(int(epochs), 600))
     if TRAIN["proc"] is not None and TRAIN["proc"].poll() is None:
         return {"error": f"вже триває: {TRAIN['name']}"}
@@ -297,7 +299,7 @@ def train_run(model: str = "m", epochs: int = 100, name: str = ""):
         name = f"{name}_{i}"
     logf = open(repo / "runs" / f"train_{name}.log", "w")
     proc = subprocess.Popen(
-        ["yolo", "detect", "train", f"model=yolov8{model}.pt", "data=datasets/eye-local/data.yaml",
+        ["yolo", "detect", "train", f"model={model}.pt", "data=datasets/eye-local/data.yaml",
          f"epochs={epochs}", "imgsz=640", "batch=16", "device=0", f"name={name}"],
         cwd=str(repo), stdout=logf, stderr=subprocess.STDOUT)
     TRAIN["proc"] = proc

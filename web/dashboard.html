@@ -43,13 +43,20 @@
   <h1>👁️ eye — навчання</h1>
   <nav><a href="/" class="on">📈 Навчання</a><a href="/camera">🎥 Трекінг</a></nav>
   <span id="status">підключення…</span>
-  <span id="dbg">build dash-4</span>
+  <span id="dbg">build dash-5 · YOLO26</span>
 </header>
 
 <div class="bar">
   <div class="grp">
     <span>🚀 Нова ітерація:</span>
-    модель <select id="model"><option value="n">n (швидка)</option><option value="s">s</option><option value="m" selected>m (точна)</option></select>
+    модель <select id="model">
+      <option value="yolov8m" selected>YOLOv8-m</option>
+      <option value="yolov8s">YOLOv8-s</option>
+      <option value="yolov8n">YOLOv8-n</option>
+      <option value="yolo26m">YOLO26-m (NMS-free)</option>
+      <option value="yolo26s">YOLO26-s</option>
+      <option value="yolo26n">YOLO26-n (edge)</option>
+    </select>
     епох <input id="epochs" type="number" value="100" min="10" max="600" style="width:74px">
     назва <input id="runname" type="text" placeholder="авто (iterN)" style="width:130px">
     <button id="run">Запустити</button>
@@ -170,7 +177,7 @@ document.getElementById("run").onclick=async ()=>{
   const m=document.getElementById("trainmsg"); m.textContent="запускаю… (переріз датасету + старт)";
   try{
     const j=await (await fetch(`/train?model=${model}&epochs=${epochs}&name=${encodeURIComponent(name)}`,{method:"POST"})).json();
-    m.textContent = j.error ? ("⚠ "+j.error) : `🚀 запущено ${j.started} (yolov8${j.model}, ${j.epochs} еп.) — графік підхопить за кілька секунд`;
+    m.textContent = j.error ? ("⚠ "+j.error) : `🚀 запущено ${j.started} (${j.model}, ${j.epochs} еп.) — графік підхопить за кілька секунд`;
   }catch(e){ m.textContent="⚠ помилка запуску: "+e.message; }
 };
 </script>
