@@ -44,7 +44,7 @@
   <h1>👁️ eye</h1>
   <nav><a href="/">📈 Навчання</a><a href="/camera" class="on">🎥 Трекінг</a></nav>
   <span id="status">готово — натисни «Увімкнути камеру»</span>
-  <span id="dbg">build single-canvas-7</span>
+  <span id="dbg">build single-canvas-8 · 🎬 запис даних</span>
 </header>
 
 <div class="controls">
@@ -54,6 +54,14 @@
   <button id="reset" class="sec">↺ Скинути статистику</button>
   <label>conf: <b id="confv">0.35</b> <input id="conf" type="range" min="0.1" max="0.9" step="0.05" value="0.35"></label>
   <span id="lock">🎯 клікни на об'єкт, щоб вести його</span>
+</div>
+
+<div class="controls" style="border-top:1px solid var(--line)">
+  <span>🎬 Запис даних — показую:</span>
+  <select id="reccls"><option value="0">ceramic_mug</option><option value="1">thermos</option><option value="2" selected>travel_mug</option></select>
+  <button id="rec" class="sec">● Записувати</button>
+  <span id="reccnt">записано: 0</span>
+  <span style="color:var(--mut);font-size:12px">рухай предмет повільно — різні кути/відстані/фони. Кадри авто-розмічаються обраним класом.</span>
 </div>
 
 <div class="wrap">
@@ -98,6 +106,7 @@ let UP_W=640, UP_H=360, streaming=false, inflight=false, confVal=0.35, fpsT=[];
 const MAXN=90, SMOOTH=15;
 let stats=CL.map(()=>({tl:[],det:0,sum:0,max:0})), frames=0;
 let lastDets=[], lockedId=null, savedCount=0;
+let recording=false, recClass=2, recCount=0;
 const clsHist=new Map();   // track id -> останні класи (для згладжування)
 
 confEl.oninput=()=>{ confVal=parseFloat(confEl.value); confvEl.textContent=confVal.toFixed(2); };
@@ -205,6 +214,15 @@ document.getElementById("capture").onclick=async ()=>{
   catch(e){ setStatus("не зберіг кадр: "+e.message); }
 };
 
+document.getElementById("reccls").onchange=e=>{ recClass=+e.target.value; };
+document.getElementById("rec").onclick=()=>{
+  recording=!recording;
+  const b=document.getElementById("rec");
+  b.textContent=recording?"■ Стоп запису":"● Записувати";
+  b.style.background=recording?"#ff6b6b":""; b.style.color=recording?"#fff":"";
+  setStatus(recording?("🔴 ЗАПИС даних: "+CL[recClass].name):"запис зупинено");
+};
+
 async function loop(){
   if(!streaming) return;
   if(inflight){ requestAnimationFrame(loop); return; }
@@ -217,15 +235,22 @@ async function loop(){
   const fd=new FormData(); fd.append("frame",blob,"f.jpg");
   const t0=performance.now();
   try{
-    const j=await (await fetch("/track?conf="+confVal,{method:"POST",body:fd})).json();
+    const url = recording ? ("/record?cls="+recClass) : ("/track?conf="+confVal);
+    const j=await (await fetch(url,{method:"POST",body:fd})).json();
     const e2e=performance.now()-t0;
-    lastDets=j.dets; render(j.dets); pushStats(j.dets); updateLockUI();
-    const now=performance.now(); fpsT.push(now); fpsT=fpsT.filter(t=>now-t<1000);
-    document.getElementById("k_fps").textContent=fpsT.length;
-    document.getElementById("k_lat").textContent=Math.round(e2e);
-    document.getElementById("k_gpu").textContent=j.infer_ms;
-    document.getElementById("k_obj").textContent=j.dets.length;
-    document.getElementById("dbg").textContent=`b6 · vid ${video.videoWidth}×${video.videoHeight} · canvas ${UP_W}×${UP_H}`;
+    if(recording){
+      if(j.saved){ recCount++; document.getElementById("reccnt").textContent="записано: "+recCount; }
+      lastDets=j.dets||[]; render(j.dets||[]);
+      document.getElementById("k_obj").textContent=(j.dets||[]).length;
+    } else {
+      lastDets=j.dets; render(j.dets); pushStats(j.dets); updateLockUI();
+      const now=performance.now(); fpsT.push(now); fpsT=fpsT.filter(t=>now-t<1000);
+      document.getElementById("k_fps").textContent=fpsT.length;
+      document.getElementById("k_lat").textContent=Math.round(e2e);
+      document.getElementById("k_gpu").textContent=j.infer_ms;
+      document.getElementById("k_obj").textContent=j.dets.length;
+    }
+    document.getElementById("dbg").textContent=`b8 · canvas ${UP_W}×${UP_H}`+(recording?" · 🔴 ЗАПИС":"");
   }catch(e){ setStatus("помилка: "+e.message); }
   finally{ inflight=false; requestAnimationFrame(loop); }
 }

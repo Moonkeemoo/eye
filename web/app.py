@@ -151,6 +151,33 @@ def capture(frame: UploadFile = File(...)):
     return {"saved": name}
 
 
+@app.post("/record")
+def record(frame: UploadFile = File(...), cls: int = 2, conf: float = 0.25):
+    raw = frame.file.read()
+    img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        return JSONResponse({"error": "decode failed"}, status_code=400)
+    cls = int(cls)
+    h, w = img.shape[:2]
+    with LOCK:
+        r = MODEL.predict(img, conf=conf, imgsz=640, verbose=False)[0]
+    names = {0: "ceramic_mug", 1: "thermos", 2: "travel_mug"}
+    if len(r.boxes) == 0:
+        return {"saved": False, "dets": []}
+    best = max(r.boxes, key=lambda b: float(b.conf[0]))
+    x1, y1, x2, y2 = [round(v, 1) for v in best.xyxy[0].tolist()]
+    cx, cy = ((x1 + x2) / 2) / w, ((y1 + y2) / 2) / h
+    bw, bh = (x2 - x1) / w, (y2 - y1) / h
+    d = ROOT.parent / "data_raw" / "images"
+    d.mkdir(parents=True, exist_ok=True)
+    nm = f"vid_{int(time.time() * 1000)}"
+    cv2.imwrite(str(d / (nm + ".jpg")), img)
+    with open(d / (nm + ".txt"), "w") as f:
+        f.write(f"{cls} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}\n")
+    return {"saved": True, "dets": [{"cls": cls, "name": names.get(cls, str(cls)),
+            "conf": round(float(best.conf[0]), 3), "box": [x1, y1, x2, y2], "id": None}]}
+
+
 TRAIN = {"proc": None, "name": None}
 
 
