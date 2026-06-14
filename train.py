@@ -1,5 +1,5 @@
 """
-Тренування YOLOv8 на власному датасеті: mug / thermos / glass.
+Тренування YOLOv8 на власному датасеті: ceramic_mug / thermos / travel_mug.
 
 ДЕ запускати: у WSL Ubuntu-24.04, попередньо активувавши середовище:
     wsl -d Ubuntu-24.04
