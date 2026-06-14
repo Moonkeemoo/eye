@@ -1,25 +1,22 @@
 """
-"Морда" — детекція з вебки в реальному часі.
+"Морда" — детекція з вебки в реальному часі. Запускати на МАКу.
 
-ДЕ запускати: на МАКу (не на ПК). Мак зручний для real-time з камери,
-а важке тренування вже зроблено на ПК.
-
-Підготовка (один раз):
+Модель уже лежить у репозиторії (models/eye_v1.pt), тож на маку досить:
+    git clone git@github.com:Moonkeemoo/eye.git     # або `git pull`, якщо вже клоновано
+    cd eye
     pip install ultralytics opencv-python
-
-Перенеси навчену модель з ПК сюди (поклади best.pt поруч із цим файлом):
-    ПК: runs/detect/detect_v1/weights/best.pt  ->  AirDrop / хмара / scp
-
-Запуск:
     python infer_webcam.py
 Вихід — клавіша q.
+
+Якщо macOS не дає доступ до камери: System Settings → Privacy & Security →
+Camera → дозволь Терміналу (або iTerm/VS Code), з якого запускаєш.
 """
 
 from ultralytics import YOLO
 import cv2
 
-model = YOLO("best.pt")          # навчена на ПК модель
-cap = cv2.VideoCapture(0)        # 0 = вебка макбука
+model = YOLO("models/eye_v1.pt")   # навчена на ПК модель (ітерація 1)
+cap = cv2.VideoCapture(0)          # 0 = вебка макбука
 
 while True:
     ok, frame = cap.read()
