@@ -44,7 +44,7 @@
   <h1>👁️ eye</h1>
   <nav><a href="/">📈 Навчання</a><a href="/camera" class="on">🎥 Трекінг</a></nav>
   <span id="status">готово — натисни «Увімкнути камеру»</span>
-  <span id="dbg">build single-canvas-9 · 🧠 вибір моделі</span>
+  <span id="dbg">build single-canvas-10 · 🧠 модель · 🧲 памʼять треку</span>
 </header>
 
 <div class="controls">
@@ -108,7 +108,8 @@ const MAXN=90, SMOOTH=15;
 let stats=CL.map(()=>({tl:[],det:0,sum:0,max:0})), frames=0;
 let lastDets=[], lockedId=null, savedCount=0;
 let recording=false, recClass=2, recCount=0;
-const clsHist=new Map();   // track id -> останні класи (для згладжування)
+const clsHist=new Map();   // track id -> {клас: накопичена впевненість} — часова памʼять треку
+const DECAY=0.98;          // ~34 кадри памʼяті: брифні фліпи не перебивають історію
 
 confEl.oninput=()=>{ confVal=parseFloat(confEl.value); confvEl.textContent=confVal.toFixed(2); };
 const setStatus=t=>document.getElementById("status").textContent=t;
@@ -127,17 +128,18 @@ function renderSummary(){
       `<tr><td><span class="dot" style="background:${c.color}"></span>${c.name}</td><td>${pct}%</td><td>${avg.toFixed(2)}</td><td>${s.max.toFixed(2)}</td></tr>`); });
 }
 renderSummary();
-document.getElementById("reset").onclick=()=>{ stats=CL.map(()=>({tl:[],det:0,sum:0,max:0})); frames=0; lastDets=[];
+document.getElementById("reset").onclick=()=>{ stats=CL.map(()=>({tl:[],det:0,sum:0,max:0})); frames=0; lastDets=[]; clsHist.clear();
   chart.data.labels=[]; chart.data.datasets.forEach(d=>d.data=[]); chart.update(); renderSummary(); };
 
 // згладжування класу по track id (мажоритарно за останні SMOOTH кадрів)
 function smoothClass(d){
   if(d.id==null) return d.cls;
-  let h=clsHist.get(d.id)||[]; h.push([d.cls,d.conf]); if(h.length>SMOOTH) h.shift(); clsHist.set(d.id,h);
-  const score={};                                   // зважене по впевненості голосування
-  for(const [c,cf] of h){ score[c]=(score[c]||0)+cf; }
-  let best=d.cls, bs=-1;
-  for(const c in score){ if(score[c]>bs){ bs=score[c]; best=+c; } }
+  let acc=clsHist.get(d.id)||{};
+  for(const k in acc) acc[k]*=DECAY;          // легке згасання старих доказів
+  acc[d.cls]=(acc[d.cls]||0)+d.conf;          // додати докази цього кадру
+  clsHist.set(d.id,acc);
+  let best=d.cls, bs=-1;                       // клас із найбільшою НАКОПИЧЕНОЮ довірою
+  for(const k in acc){ if(acc[k]>bs){ bs=acc[k]; best=+k; } }
   return best;
 }
 
