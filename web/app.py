@@ -16,6 +16,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 import cv2
@@ -28,6 +29,7 @@ ROOT = Path(__file__).resolve().parent
 RUNS = ROOT.parent / "runs" / "detect"
 MODEL = YOLO(str(ROOT.parent / "models" / "eye_iter1.pt"))
 LOCK = threading.Lock()
+DETLOG = deque(maxlen=6000)
 
 app = FastAPI()
 
@@ -114,7 +116,29 @@ def track(frame: UploadFile = File(...), conf: float = 0.35):
         tid = int(b.id[0]) if b.id is not None else None
         dets.append({"cls": ci, "name": r.names[ci], "conf": round(float(b.conf[0]), 3),
                      "box": [x1, y1, x2, y2], "id": tid})
+    present = {}
+    for d in dets:
+        present[d["cls"]] = max(present.get(d["cls"], 0.0), d["conf"])
+    DETLOG.append(present)
     return {"w": w, "h": h, "infer_ms": infer_ms, "dets": dets}
+
+
+@app.get("/detstats")
+def detstats(reset: int = 0):
+    if reset:
+        DETLOG.clear()
+        return {"reset": True}
+    frames = len(DETLOG)
+    names = {0: "ceramic_mug", 1: "thermos", 2: "travel_mug"}
+    out = {}
+    for ci, nm in names.items():
+        confs = [f[ci] for f in DETLOG if ci in f]
+        out[nm] = {
+            "frames_pct": round(100 * len(confs) / frames, 1) if frames else 0,
+            "avg_conf": round(sum(confs) / len(confs), 3) if confs else 0,
+            "max_conf": round(max(confs), 3) if confs else 0,
+        }
+    return {"frames": frames, "classes": out}
 
 
 @app.post("/capture")
