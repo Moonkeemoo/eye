@@ -44,7 +44,7 @@
   <h1>👁️ eye</h1>
   <nav><a href="/">📈 Навчання</a><a href="/camera" class="on">🎥 Трекінг</a></nav>
   <span id="status">готово — натисни «Увімкнути камеру»</span>
-  <span id="dbg">build single-canvas-6</span>
+  <span id="dbg">build single-canvas-7</span>
 </header>
 
 <div class="controls">
@@ -95,7 +95,7 @@ const video=document.createElement("video"); video.autoplay=true; video.playsInl
 const view=document.getElementById("view"), vctx=view.getContext("2d");
 const confEl=document.getElementById("conf"), confvEl=document.getElementById("confv");
 let UP_W=640, UP_H=360, streaming=false, inflight=false, confVal=0.35, fpsT=[];
-const MAXN=90, SMOOTH=8;
+const MAXN=90, SMOOTH=15;
 let stats=CL.map(()=>({tl:[],det:0,sum:0,max:0})), frames=0;
 let lastDets=[], lockedId=null, savedCount=0;
 const clsHist=new Map();   // track id -> останні класи (для згладжування)
@@ -123,9 +123,11 @@ document.getElementById("reset").onclick=()=>{ stats=CL.map(()=>({tl:[],det:0,su
 // згладжування класу по track id (мажоритарно за останні SMOOTH кадрів)
 function smoothClass(d){
   if(d.id==null) return d.cls;
-  let h=clsHist.get(d.id)||[]; h.push(d.cls); if(h.length>SMOOTH) h.shift(); clsHist.set(d.id,h);
-  const cnt={}; let best=d.cls, bc=0;
-  for(const c of h){ cnt[c]=(cnt[c]||0)+1; if(cnt[c]>bc){bc=cnt[c]; best=+c;} }
+  let h=clsHist.get(d.id)||[]; h.push([d.cls,d.conf]); if(h.length>SMOOTH) h.shift(); clsHist.set(d.id,h);
+  const score={};                                   // зважене по впевненості голосування
+  for(const [c,cf] of h){ score[c]=(score[c]||0)+cf; }
+  let best=d.cls, bs=-1;
+  for(const c in score){ if(score[c]>bs){ bs=score[c]; best=+c; } }
   return best;
 }
 
