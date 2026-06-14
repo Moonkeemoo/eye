@@ -27,7 +27,7 @@ from ultralytics import YOLO
 
 ROOT = Path(__file__).resolve().parent
 RUNS = ROOT.parent / "runs" / "detect"
-MODEL = YOLO(str(ROOT.parent / "models" / "eye_iter1.pt"))
+MODEL = YOLO(str(ROOT.parent / "models" / "eye_iter2.pt"))
 LOCK = threading.Lock()
 DETLOG = deque(maxlen=6000)
 
