@@ -96,7 +96,7 @@ const CL = [
 const video=document.getElementById("video"), overlay=document.getElementById("overlay");
 const octx=overlay.getContext("2d");
 const confEl=document.getElementById("conf"), confvEl=document.getElementById("confv");
-const UP_W=640; let UP_H=480;
+let UP_W=640, UP_H=480;
 const cap=document.createElement("canvas"), cctx=cap.getContext("2d");
 let streaming=false, inflight=false, confVal=0.35;
 let fpsT=[];
@@ -132,12 +132,21 @@ renderSummary();
 document.getElementById("reset").onclick=()=>{ stats=CL.map(()=>({tl:[],det:0,sum:0,max:0})); frames=0;
   chart.data.labels=[]; chart.data.datasets.forEach(d=>d.data=[]); chart.update(); renderSummary(); };
 
+function sizeCanvases(){
+  const vw=video.videoWidth, vh=video.videoHeight;
+  if(!vw||!vh) return false;
+  const s = 640/Math.max(vw,vh);            // довша сторона -> 640, зберігаємо пропорції
+  UP_W=Math.round(vw*s); UP_H=Math.round(vh*s);
+  cap.width=UP_W; cap.height=UP_H; overlay.width=UP_W; overlay.height=UP_H;
+  return true;
+}
 async function startCam(){
   try{
-    const st=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:960}},audio:false});
-    video.srcObject=st; await video.play();
-    UP_H=Math.round(UP_W*video.videoHeight/video.videoWidth)||480;
-    cap.width=UP_W; cap.height=UP_H; overlay.width=UP_W; overlay.height=UP_H;
+    const st=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720}},audio:false});
+    video.srcObject=st;
+    await new Promise(res=>{ if(video.readyState>=1 && video.videoWidth) return res(); video.onloadedmetadata=()=>res(); });
+    await video.play();
+    sizeCanvases();
     streaming=true; setStatus("трекінг працює · модель eye_v4m"); loop();
   }catch(e){ setStatus("немає доступу до камери: "+e.message); }
 }
