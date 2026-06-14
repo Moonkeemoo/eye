@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>eye — трекінг наживо</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  :root{ --bg:#0e1116; --panel:#171c24; --line:#262d3a; --txt:#e6edf3; --mut:#8b97a7;
+         --c0:#4ea1ff; --c1:#ff6b6b; --c2:#51cf66; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--txt);
+        font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  header{ padding:12px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  header h1{ margin:0; font-size:16px; }
+  nav a{ color:var(--mut); text-decoration:none; margin-right:14px; font-size:13px; }
+  nav a.on{ color:var(--txt); font-weight:700; }
+  #status{ color:var(--mut); font-size:12px; }
+  .controls{ display:flex; gap:10px; align-items:center; padding:12px 18px; flex-wrap:wrap; }
+  button{ background:var(--c0); color:#04101f; border:0; border-radius:8px; padding:9px 16px; font-weight:600; cursor:pointer; }
+  button.sec{ background:#222b38; color:var(--txt); }
+  input[type=range]{ width:120px; }
+  .wrap{ display:flex; gap:16px; padding:0 18px 22px; flex-wrap:wrap; align-items:flex-start; }
+  .stage{ position:relative; flex:1 1 520px; max-width:820px; background:#000; border:1px solid var(--line);
+          border-radius:10px; overflow:hidden; aspect-ratio:4/3; }
+  #video,#overlay{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  #overlay{ pointer-events:none; }
+  .panel{ flex:1 1 300px; max-width:400px; }
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:12px; }
+  .card h2{ font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--mut); margin:0 0 8px; }
+  .kpis{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .kpi{ background:#0e1320; border:1px solid var(--line); border-radius:8px; padding:7px 10px; }
+  .kpi .v{ font-size:19px; font-weight:700; } .kpi .l{ font-size:11px; color:var(--mut); }
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  td,th{ text-align:left; padding:5px 4px; border-bottom:1px solid var(--line); }
+  th{ color:var(--mut); font-weight:600; font-size:11px; text-transform:uppercase; }
+  .dot{ width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:6px; vertical-align:middle; }
+  canvas{ max-height:170px; }
+  .why{ color:var(--mut); font-size:12px; margin:-2px 0 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>👁️ eye</h1>
+  <nav><a href="/">📈 Навчання</a><a href="/camera" class="on">🎥 Трекінг</a></nav>
+  <span id="status">готово — натисни «Увімкнути камеру»</span>
+</header>
+
+<div class="controls">
+  <button id="start">▶ Увімкнути камеру</button>
+  <button id="stop" class="sec">⏸ Стоп</button>
+  <button id="reset" class="sec">↺ Скинути статистику</button>
+  <label>conf: <b id="confv">0.35</b> <input id="conf" type="range" min="0.1" max="0.9" step="0.05" value="0.35"></label>
+</div>
+
+<div class="wrap">
+  <div class="stage">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="card">
+      <h2>Зараз</h2>
+      <div class="kpis">
+        <div class="kpi"><div class="v" id="k_fps">—</div><div class="l">FPS</div></div>
+        <div class="kpi"><div class="v" id="k_lat">—</div><div class="l">затримка, мс</div></div>
+        <div class="kpi"><div class="v" id="k_gpu">—</div><div class="l">GPU, мс</div></div>
+        <div class="kpi"><div class="v" id="k_obj">0</div><div class="l">обʼєктів</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Впевненість у часі</h2>
+      <div class="why">Наскільки модель упевнена в кожному класі по кадрах. Вище = краще. Раніше «провисало» на 40-50%.</div>
+      <canvas id="chart"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Звіт сесії (реальний тест)</h2>
+      <div class="why">Чесна оцінка на живій вебці: у скількох % кадрів клас знайдено + середня/макс впевненість.</div>
+      <table>
+        <thead><tr><th>клас</th><th>знайдено</th><th>сер.</th><th>макс</th></tr></thead>
+        <tbody id="summary"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const CL = [
+  {name:"ceramic_mug", color:"#4ea1ff"},
+  {name:"thermos",     color:"#ff6b6b"},
+  {name:"travel_mug",  color:"#51cf66"},
+];
+const video=document.getElementById("video"), overlay=document.getElementById("overlay");
+const octx=overlay.getContext("2d");
+const confEl=document.getElementById("conf"), confvEl=document.getElementById("confv");
+const UP_W=640; let UP_H=480;
+const cap=document.createElement("canvas"), cctx=cap.getContext("2d");
+let streaming=false, inflight=false, confVal=0.35;
+let fpsT=[];
+const MAXN=90;
+let stats = CL.map(()=>({tl:[], det:0, sum:0, max:0}));
+let frames=0;
+
+confEl.oninput=()=>{ confVal=parseFloat(confEl.value); confvEl.textContent=confVal.toFixed(2); };
+const setStatus=t=>document.getElementById("status").textContent=t;
+
+// chart
+const chart=new Chart(document.getElementById("chart"),{
+  type:"line",
+  data:{ labels:[], datasets: CL.map(c=>({label:c.name, data:[], borderColor:c.color, borderWidth:2, pointRadius:0, tension:.25})) },
+  options:{ animation:false, plugins:{legend:{labels:{color:"#8b97a7",boxWidth:10}}},
+    scales:{ y:{min:0,max:1,ticks:{color:"#8b97a7"},grid:{color:"#1e2530"}},
+             x:{ticks:{display:false},grid:{display:false}} } }
+});
+
+function renderSummary(){
+  const tb=document.getElementById("summary"); tb.innerHTML="";
+  CL.forEach((c,i)=>{
+    const s=stats[i];
+    const pct = frames? Math.round(100*s.det/frames):0;
+    const avg = s.det? (s.sum/s.det):0;
+    tb.insertAdjacentHTML("beforeend",
+      `<tr><td><span class="dot" style="background:${c.color}"></span>${c.name}</td>
+       <td>${pct}%</td><td>${avg.toFixed(2)}</td><td>${s.max.toFixed(2)}</td></tr>`);
+  });
+}
+renderSummary();
+
+document.getElementById("reset").onclick=()=>{ stats=CL.map(()=>({tl:[],det:0,sum:0,max:0})); frames=0;
+  chart.data.labels=[]; chart.data.datasets.forEach(d=>d.data=[]); chart.update(); renderSummary(); };
+
+async function startCam(){
+  try{
+    const st=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:960}},audio:false});
+    video.srcObject=st; await video.play();
+    UP_H=Math.round(UP_W*video.videoHeight/video.videoWidth)||480;
+    cap.width=UP_W; cap.height=UP_H; overlay.width=UP_W; overlay.height=UP_H;
+    streaming=true; setStatus("трекінг працює · модель eye_v4m"); loop();
+  }catch(e){ setStatus("немає доступу до камери: "+e.message); }
+}
+function stopCam(){ streaming=false; if(video.srcObject){video.srcObject.getTracks().forEach(t=>t.stop());video.srcObject=null;}
+  octx.clearRect(0,0,overlay.width,overlay.height); setStatus("зупинено"); }
+
+function draw(dets){
+  octx.clearRect(0,0,overlay.width,overlay.height);
+  octx.lineWidth=2; octx.font="600 14px system-ui"; octx.textBaseline="bottom";
+  for(const d of dets){
+    const c = CL[d.cls]? CL[d.cls].color : "#fff";
+    const [x1,y1,x2,y2]=d.box;
+    octx.strokeStyle=c; octx.strokeRect(x1,y1,x2-x1,y2-y1);
+    const lbl=`${d.name}${d.id!=null?" #"+d.id:""} ${(d.conf*100).toFixed(0)}%`;
+    const tw=octx.measureText(lbl).width+8;
+    octx.fillStyle=c; octx.fillRect(x1,Math.max(0,y1-18),tw,18);
+    octx.fillStyle="#04101f"; octx.fillText(lbl,x1+4,Math.max(16,y1-3));
+  }
+}
+
+function pushStats(dets){
+  frames++;
+  const best=[0,0,0];
+  for(const d of dets){ if(d.cls>=0&&d.cls<3&&d.conf>best[d.cls]) best[d.cls]=d.conf; }
+  for(let i=0;i<3;i++){
+    const m=best[i];
+    stats[i].tl.push(m); if(stats[i].tl.length>MAXN) stats[i].tl.shift();
+    if(m>0){ stats[i].det++; stats[i].sum+=m; if(m>stats[i].max) stats[i].max=m; }
+  }
+  chart.data.labels = stats[0].tl.map((_,i)=>i);
+  for(let i=0;i<3;i++) chart.data.datasets[i].data = stats[i].tl;
+  chart.update();
+  renderSummary();
+}
+
+async function loop(){
+  if(!streaming) return;
+  if(inflight){ requestAnimationFrame(loop); return; }
+  inflight=true;
+  cctx.drawImage(video,0,0,UP_W,UP_H);
+  const blob=await new Promise(r=>cap.toBlob(r,"image/jpeg",0.6));
+  const fd=new FormData(); fd.append("frame",blob,"f.jpg");
+  const t0=performance.now();
+  try{
+    const j=await (await fetch("/track?conf="+confVal,{method:"POST",body:fd})).json();
+    const e2e=performance.now()-t0;
+    draw(j.dets); pushStats(j.dets);
+    const now=performance.now(); fpsT.push(now); fpsT=fpsT.filter(t=>now-t<1000);
+    document.getElementById("k_fps").textContent=fpsT.length;
+    document.getElementById("k_lat").textContent=Math.round(e2e);
+    document.getElementById("k_gpu").textContent=j.infer_ms;
+    document.getElementById("k_obj").textContent=j.dets.length;
+  }catch(e){ setStatus("помилка: "+e.message); }
+  finally{ inflight=false; requestAnimationFrame(loop); }
+}
+
+document.getElementById("start").onclick=startCam;
+document.getElementById("stop").onclick=stopCam;
+</script>
+</body>
+</html>
