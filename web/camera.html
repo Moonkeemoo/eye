@@ -21,9 +21,10 @@
   button{ background:var(--c0); color:#04101f; border:0; border-radius:8px; padding:9px 16px; font-weight:600; cursor:pointer; }
   button.sec{ background:#222b38; color:var(--txt); }
   input[type=range]{ width:120px; }
+  #lock{ margin-left:auto; font-size:13px; color:var(--mut); }
   .wrap{ display:flex; gap:16px; padding:0 18px 22px; flex-wrap:wrap; align-items:flex-start; }
   .stage{ flex:1 1 520px; max-width:820px; background:#000; border:1px solid var(--line); border-radius:10px; overflow:hidden; line-height:0; }
-  #view{ display:block; width:100%; height:auto; }
+  #view{ display:block; width:100%; height:auto; cursor:pointer; }
   .panel{ flex:1 1 300px; max-width:400px; }
   .card{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:12px; }
   .card h2{ font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--mut); margin:0 0 8px; }
@@ -43,14 +44,16 @@
   <h1>👁️ eye</h1>
   <nav><a href="/">📈 Навчання</a><a href="/camera" class="on">🎥 Трекінг</a></nav>
   <span id="status">готово — натисни «Увімкнути камеру»</span>
-  <span id="dbg">build single-canvas-5</span>
+  <span id="dbg">build single-canvas-6</span>
 </header>
 
 <div class="controls">
   <button id="start">▶ Увімкнути камеру</button>
   <button id="stop" class="sec">⏸ Стоп</button>
+  <button id="capture" class="sec">📸 Зберегти кадр (<span id="savecnt">0</span>)</button>
   <button id="reset" class="sec">↺ Скинути статистику</button>
   <label>conf: <b id="confv">0.35</b> <input id="conf" type="range" min="0.1" max="0.9" step="0.05" value="0.35"></label>
+  <span id="lock">🎯 клікни на об'єкт, щоб вести його</span>
 </div>
 
 <div class="wrap">
@@ -92,9 +95,10 @@ const video=document.createElement("video"); video.autoplay=true; video.playsInl
 const view=document.getElementById("view"), vctx=view.getContext("2d");
 const confEl=document.getElementById("conf"), confvEl=document.getElementById("confv");
 let UP_W=640, UP_H=360, streaming=false, inflight=false, confVal=0.35, fpsT=[];
-const MAXN=90;
+const MAXN=90, SMOOTH=8;
 let stats=CL.map(()=>({tl:[],det:0,sum:0,max:0})), frames=0;
-let lastDets=[];
+let lastDets=[], lockedId=null, savedCount=0;
+const clsHist=new Map();   // track id -> останні класи (для згладжування)
 
 confEl.oninput=()=>{ confVal=parseFloat(confEl.value); confvEl.textContent=confVal.toFixed(2); };
 const setStatus=t=>document.getElementById("status").textContent=t;
@@ -116,13 +120,19 @@ renderSummary();
 document.getElementById("reset").onclick=()=>{ stats=CL.map(()=>({tl:[],det:0,sum:0,max:0})); frames=0; lastDets=[];
   chart.data.labels=[]; chart.data.datasets.forEach(d=>d.data=[]); chart.update(); renderSummary(); };
 
+// згладжування класу по track id (мажоритарно за останні SMOOTH кадрів)
+function smoothClass(d){
+  if(d.id==null) return d.cls;
+  let h=clsHist.get(d.id)||[]; h.push(d.cls); if(h.length>SMOOTH) h.shift(); clsHist.set(d.id,h);
+  const cnt={}; let best=d.cls, bc=0;
+  for(const c of h){ cnt[c]=(cnt[c]||0)+1; if(cnt[c]>bc){bc=cnt[c]; best=+c;} }
+  return best;
+}
+
 function sizeFromVideo(){
-  const vw=video.videoWidth, vh=video.videoHeight;
-  if(!vw||!vh) return false;
-  const s=640/Math.max(vw,vh);
-  UP_W=Math.round(vw*s); UP_H=Math.round(vh*s);
-  view.width=UP_W; view.height=UP_H;
-  return true;
+  const vw=video.videoWidth, vh=video.videoHeight; if(!vw||!vh) return false;
+  const s=640/Math.max(vw,vh); UP_W=Math.round(vw*s); UP_H=Math.round(vh*s);
+  view.width=UP_W; view.height=UP_H; return true;
 }
 
 async function startCam(){
@@ -130,30 +140,52 @@ async function startCam(){
     const st=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720}},audio:false});
     video.srcObject=st;
     await new Promise(res=>{ if(video.readyState>=1 && video.videoWidth) return res(); video.onloadedmetadata=()=>res(); });
-    await video.play();
-    sizeFromVideo();
+    await video.play(); sizeFromVideo();
     streaming=true; setStatus("трекінг працює · модель eye_v4m"); loop();
   }catch(e){ setStatus("немає доступу до камери: "+e.message); }
 }
 function stopCam(){ streaming=false; if(video.srcObject){video.srcObject.getTracks().forEach(t=>t.stop());video.srcObject=null;} setStatus("зупинено"); }
 
-// малюємо КАДР і РАМКИ на одному полотні -> координати гарантовано збігаються
+// клік -> вибрати/зняти ціль
+view.addEventListener("click", e=>{
+  const r=view.getBoundingClientRect();
+  const x=(e.clientX-r.left)*(view.width/r.width), y=(e.clientY-r.top)*(view.height/r.height);
+  let hit=null;
+  for(const d of lastDets){ const [x1,y1,x2,y2]=d.box; if(x>=x1&&x<=x2&&y>=y1&&y<=y2){ hit=d; break; } }
+  lockedId = (hit && hit.id!=null) ? (lockedId===hit.id ? null : hit.id) : null;
+  updateLockUI();
+});
+function updateLockUI(){
+  const el=document.getElementById("lock");
+  if(lockedId==null){ el.textContent="🎯 клікни на об'єкт, щоб вести його"; el.style.color="var(--mut)"; return; }
+  const d=lastDets.find(x=>x.id===lockedId);
+  if(d){ const sc=smoothClass(d); el.innerHTML=`🎯 ціль: <b>${CL[sc].name} #${lockedId}</b> ${(d.conf*100).toFixed(0)}% <span style="color:var(--mut)">(клік ще раз — зняти)</span>`; el.style.color=CL[sc].color; }
+  else { el.textContent=`🎯 ціль #${lockedId} — поза кадром`; el.style.color="var(--mut)"; }
+}
+
 function render(dets){
-  vctx.drawImage(video,0,0,UP_W,UP_H);              // кадр
-  vctx.lineWidth=Math.max(2,UP_W/320); vctx.font=`600 ${Math.max(13,UP_W/40)}px system-ui`; vctx.textBaseline="bottom";
+  vctx.drawImage(video,0,0,UP_W,UP_H);
+  const baseW=Math.max(2,UP_W/320), font=Math.max(13,UP_W/40), th=Math.max(16,UP_W/34);
+  vctx.font=`600 ${font}px system-ui`; vctx.textBaseline="bottom";
+  const locked = lockedId!=null;
   for(const d of dets){
-    const c=CL[d.cls]?CL[d.cls].color:"#fff"; const [x1,y1,x2,y2]=d.box;
+    const sc=smoothClass(d), c=CL[sc]?CL[sc].color:"#fff";
+    const isTarget = d.id===lockedId;
+    vctx.globalAlpha = (locked && !isTarget) ? 0.3 : 1;   // приглушити нецільові
+    vctx.lineWidth = isTarget ? baseW*2.2 : baseW;
+    const [x1,y1,x2,y2]=d.box;
     vctx.strokeStyle=c; vctx.strokeRect(x1,y1,x2-x1,y2-y1);
-    const lbl=`${d.name}${d.id!=null?" #"+d.id:""} ${(d.conf*100).toFixed(0)}%`;
-    const tw=vctx.measureText(lbl).width+8, th=Math.max(16,UP_W/34);
+    const lbl=`${isTarget?"🎯 ":""}${CL[sc]?CL[sc].name:d.name}${d.id!=null?" #"+d.id:""} ${(d.conf*100).toFixed(0)}%`;
+    const tw=vctx.measureText(lbl).width+8;
     vctx.fillStyle=c; vctx.fillRect(x1,Math.max(0,y1-th),tw,th);
     vctx.fillStyle="#04101f"; vctx.fillText(lbl,x1+4,Math.max(th-2,y1-3));
   }
+  vctx.globalAlpha=1;
 }
 
 function pushStats(dets){
   frames++; const best=[0,0,0];
-  for(const d of dets){ if(d.cls>=0&&d.cls<3&&d.conf>best[d.cls]) best[d.cls]=d.conf; }
+  for(const d of dets){ const sc=smoothClass(d); if(sc>=0&&sc<3&&d.conf>best[sc]) best[sc]=d.conf; }
   for(let i=0;i<3;i++){ const m=best[i]; stats[i].tl.push(m); if(stats[i].tl.length>MAXN) stats[i].tl.shift();
     if(m>0){ stats[i].det++; stats[i].sum+=m; if(m>stats[i].max) stats[i].max=m; } }
   chart.data.labels=stats[0].tl.map((_,i)=>i);
@@ -161,26 +193,37 @@ function pushStats(dets){
   chart.update(); renderSummary();
 }
 
+document.getElementById("capture").onclick=async ()=>{
+  if(!streaming){ setStatus("спершу увімкни камеру"); return; }
+  const t=document.createElement("canvas"); t.width=video.videoWidth; t.height=video.videoHeight;
+  t.getContext("2d").drawImage(video,0,0,t.width,t.height);
+  const blob=await new Promise(r=>t.toBlob(r,"image/jpeg",0.9));
+  const fd=new FormData(); fd.append("frame",blob,"c.jpg");
+  try{ await fetch("/capture",{method:"POST",body:fd}); savedCount++; document.getElementById("savecnt").textContent=savedCount; }
+  catch(e){ setStatus("не зберіг кадр: "+e.message); }
+};
+
 async function loop(){
   if(!streaming) return;
   if(inflight){ requestAnimationFrame(loop); return; }
   inflight=true;
   if(video.videoWidth && Math.abs(view.width/view.height - video.videoWidth/video.videoHeight)>0.02) sizeFromVideo();
-  render(lastDets);                                  // показати кадр (з попередніми рамками для плавності)
-  const blob=await new Promise(r=>{ const t=document.createElement("canvas"); t.width=UP_W; t.height=UP_H;
-    t.getContext("2d").drawImage(video,0,0,UP_W,UP_H); t.toBlob(r,"image/jpeg",0.6); });
+  render(lastDets);
+  const t=document.createElement("canvas"); t.width=UP_W; t.height=UP_H;
+  t.getContext("2d").drawImage(video,0,0,UP_W,UP_H);
+  const blob=await new Promise(r=>t.toBlob(r,"image/jpeg",0.6));
   const fd=new FormData(); fd.append("frame",blob,"f.jpg");
   const t0=performance.now();
   try{
     const j=await (await fetch("/track?conf="+confVal,{method:"POST",body:fd})).json();
     const e2e=performance.now()-t0;
-    lastDets=j.dets; render(j.dets); pushStats(j.dets);
+    lastDets=j.dets; render(j.dets); pushStats(j.dets); updateLockUI();
     const now=performance.now(); fpsT.push(now); fpsT=fpsT.filter(t=>now-t<1000);
     document.getElementById("k_fps").textContent=fpsT.length;
     document.getElementById("k_lat").textContent=Math.round(e2e);
     document.getElementById("k_gpu").textContent=j.infer_ms;
     document.getElementById("k_obj").textContent=j.dets.length;
-    document.getElementById("dbg").textContent=`b5 · vid ${video.videoWidth}×${video.videoHeight} · canvas ${UP_W}×${UP_H} · disp ${view.clientWidth}×${view.clientHeight}`;
+    document.getElementById("dbg").textContent=`b6 · vid ${video.videoWidth}×${video.videoHeight} · canvas ${UP_W}×${UP_H}`;
   }catch(e){ setStatus("помилка: "+e.message); }
   finally{ inflight=false; requestAnimationFrame(loop); }
 }

@@ -112,3 +112,13 @@ def track(frame: UploadFile = File(...), conf: float = 0.35):
         dets.append({"cls": ci, "name": r.names[ci], "conf": round(float(b.conf[0]), 3),
                      "box": [x1, y1, x2, y2], "id": tid})
     return {"w": w, "h": h, "infer_ms": infer_ms, "dets": dets}
+
+
+@app.post("/capture")
+def capture(frame: UploadFile = File(...)):
+    raw = frame.file.read()
+    d = ROOT.parent / "data_raw" / "images"
+    d.mkdir(parents=True, exist_ok=True)
+    name = f"cap_{int(time.time() * 1000)}.jpg"
+    (d / name).write_bytes(raw)
+    return {"saved": name}
