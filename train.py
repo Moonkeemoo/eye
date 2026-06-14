@@ -27,7 +27,7 @@ from ultralytics import YOLO
 #   DATA_YAML = f"{dataset.location}/data.yaml"
 #
 # Варіант Б — датасет уже розпакований локально: вкажи шлях до data.yaml.
-DATA_YAML = "datasets/eye-1/data.yaml"   # <- підправ під реальний шлях
+DATA_YAML = "datasets/eye-local/data.yaml"   # згенеровано split_dataset.py
 
 
 # =============================================================
