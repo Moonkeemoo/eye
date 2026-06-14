@@ -60,3 +60,6 @@ python split_dataset.py --src data_raw/images --out datasets/eye-local
 ---
 **Аугментації робити НЕ треба** — YOLO додасть їх на льоту під час тренування.
 Тобто від labelImg потрібні лише дві речі: рамки і класи. Решту бере на себе `split_dataset.py` і сам YOLO.
+
+## Якщо не запускається
+- `ModuleNotFoundError: No module named 'distutils'` — у Python 3.12 модуль `distutils` прибрали зі стандартної бібліотеки, а labelImg (старий) його імпортує. Фікс (уже застосований): `source ~/label/bin/activate && pip install -U setuptools` (setuptools повертає сумісний `distutils`).
