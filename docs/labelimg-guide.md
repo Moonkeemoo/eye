@@ -63,3 +63,5 @@ python split_dataset.py --src data_raw/images --out datasets/eye-local
 
 ## Якщо не запускається
 - `ModuleNotFoundError: No module named 'distutils'` — у Python 3.12 модуль `distutils` прибрали зі стандартної бібліотеки, а labelImg (старий) його імпортує. Фікс (уже застосований): `source ~/label/bin/activate && pip install -U setuptools` (setuptools повертає сумісний `distutils`).
+- `Could not load the Qt platform plugin "xcb"` — на чистій Ubuntu бракує системних X-бібліотек для GUI. Фікс (уже застосований): `sudo apt-get install -y libxcb-xinerama0 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xfixes0 libxcb-xkb1 libxkbcommon0 libegl1 libgl1`.
+- `QStandardPaths: wrong permissions on /mnt/wslg/runtime-dir` — нешкідливе попередження WSLg, ігноруй.
