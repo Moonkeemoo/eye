@@ -141,7 +141,7 @@ async function startCam(){
     video.srcObject=st;
     await new Promise(res=>{ if(video.readyState>=1 && video.videoWidth) return res(); video.onloadedmetadata=()=>res(); });
     await video.play(); sizeFromVideo();
-    streaming=true; setStatus("трекінг працює · модель eye_v4m"); loop();
+    streaming=true; setStatus("трекінг працює · модель eye_iter1"); loop();
   }catch(e){ setStatus("немає доступу до камери: "+e.message); }
 }
 function stopCam(){ streaming=false; if(video.srcObject){video.srcObject.getTracks().forEach(t=>t.stop());video.srcObject=null;} setStatus("зупинено"); }

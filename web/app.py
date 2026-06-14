@@ -26,7 +26,7 @@ from ultralytics import YOLO
 
 ROOT = Path(__file__).resolve().parent
 RUNS = ROOT.parent / "runs" / "detect"
-MODEL = YOLO(str(ROOT.parent / "models" / "eye_v4m.pt"))
+MODEL = YOLO(str(ROOT.parent / "models" / "eye_iter1.pt"))
 LOCK = threading.Lock()
 
 app = FastAPI()
