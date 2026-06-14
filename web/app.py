@@ -30,7 +30,8 @@ app = FastAPI()
 
 
 def page(name):
-    return HTMLResponse((ROOT / name).read_text(encoding="utf-8"))
+    return HTMLResponse((ROOT / name).read_text(encoding="utf-8"),
+                        headers={"Cache-Control": "no-store, max-age=0"})
 
 
 @app.get("/")
