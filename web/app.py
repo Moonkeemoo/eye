@@ -87,8 +87,9 @@ def progress(run: str = ""):
         "metrics/precision(B)", "metrics/recall(B)",
         "metrics/mAP50(B)", "metrics/mAP50-95(B)",
     ]
+    idle_s = round(time.time() - p.stat().st_mtime, 1)
     return {"exists": True, "run": run, "epochs": epochs, "total": total,
-            "series": {k: col(k) for k in keys}}
+            "idle_s": idle_s, "series": {k: col(k) for k in keys}}
 
 
 @app.post("/track")

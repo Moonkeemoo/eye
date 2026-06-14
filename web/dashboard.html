@@ -123,9 +123,14 @@ async function poll(){
   document.getElementById("k_prec").textContent = fmt(s["metrics/precision(B)"][last]);
 
   const cur = ep[last], tot = j.total || "?";
-  const done = (typeof tot === "number") && cur >= tot;
-  setStatus(`Епоха ${cur} / ${tot}` + (done ? " · готово ✅" : " · триває… (оновлюється саме)"));
-  setTimeout(poll, done ? 15000 : 3500);
+  const idle = j.idle_s || 0;
+  const finished = ((typeof tot === "number") && cur >= tot) || idle > 12;
+  let msg = `Епоха ${cur}` + (typeof tot === "number" ? ` / ${tot}` : "");
+  if (finished) msg += (typeof tot === "number" && cur < tot)
+        ? " · готово ✅ (рання зупинка — далі не покращувалось)" : " · готово ✅";
+  else msg += " · триває… (оновлюється саме)";
+  setStatus(msg);
+  setTimeout(poll, finished ? 15000 : 3500);
 }
 poll();
 </script>
