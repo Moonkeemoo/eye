@@ -31,13 +31,28 @@ MODELS_DIR = ROOT.parent / "models"
 _LOADED = {}
 
 
+def _resolve(name):
+    p = MODELS_DIR / (name + ".pt")
+    if p.exists():
+        return p
+    p = RUNS / name / "weights" / "best.pt"
+    return p if p.exists() else None
+
+
 def _avail():
-    return sorted(p.stem for p in MODELS_DIR.glob("*.pt"))
+    names = set(p.stem for p in MODELS_DIR.glob("*.pt"))
+    if RUNS.exists():
+        for d in RUNS.glob("*/weights/best.pt"):
+            names.add(d.parent.parent.name)
+    return sorted(names)
 
 
 def _model(name):
     if name not in _LOADED:
-        _LOADED[name] = YOLO(str(MODELS_DIR / (name + ".pt")))
+        path = _resolve(name)
+        if path is None:
+            raise FileNotFoundError(name)
+        _LOADED[name] = YOLO(str(path))
     return _LOADED[name]
 
 
@@ -256,7 +271,7 @@ def runs():
 
 
 @app.post("/train")
-def train_run(model: str = "m", epochs: int = 100):
+def train_run(model: str = "m", epochs: int = 100, name: str = ""):
     if model not in ("n", "s", "m"):
         model = "m"
     epochs = max(10, min(int(epochs), 600))
@@ -271,8 +286,15 @@ def train_run(model: str = "m", epochs: int = 100):
     if sp.returncode != 0:
         return {"error": "split: " + (sp.stderr or sp.stdout)[-300:]}
     (repo / "runs").mkdir(parents=True, exist_ok=True)
-    existing = [p.name for p in RUNS.glob("iter*")] if RUNS.exists() else []
-    name = f"iter{len(existing) + 1}"
+    name = "".join(c for c in name if c.isalnum() or c in "_-")[:40]
+    if not name:
+        existing = [p.name for p in RUNS.glob("iter*")] if RUNS.exists() else []
+        name = f"iter{len(existing) + 1}"
+    if (RUNS / name).exists():
+        i = 2
+        while (RUNS / f"{name}_{i}").exists():
+            i += 1
+        name = f"{name}_{i}"
     logf = open(repo / "runs" / f"train_{name}.log", "w")
     proc = subprocess.Popen(
         ["yolo", "detect", "train", f"model=yolov8{model}.pt", "data=datasets/eye-local/data.yaml",
