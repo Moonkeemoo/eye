@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>eye — жива детекція</title>
+<style>
+  :root { --bg:#0e1116; --panel:#171c24; --line:#262d3a; --txt:#e6edf3; --mut:#8b97a7;
+          --c0:#4ea1ff; --c1:#ff6b6b; --c2:#51cf66; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt);
+         font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  header { padding:12px 18px; border-bottom:1px solid var(--line); display:flex;
+           align-items:center; gap:12px; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  #status { color:var(--mut); font-size:12px; }
+  .wrap { display:flex; gap:16px; padding:16px; flex-wrap:wrap; align-items:flex-start; }
+  .stage { position:relative; flex:1 1 520px; max-width:860px; background:#000;
+           border:1px solid var(--line); border-radius:10px; overflow:hidden; aspect-ratio:4/3; }
+  #video, #overlay { position:absolute; inset:0; width:100%; height:100%; }
+  #video { object-fit:cover; }
+  #overlay { object-fit:cover; pointer-events:none; }
+  .panel { flex:1 1 280px; max-width:380px; background:var(--panel); border:1px solid var(--line);
+           border-radius:10px; padding:14px; }
+  .panel h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--mut);
+              margin:0 0 10px; }
+  .kpis { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px; }
+  .kpi { background:#0e1320; border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+  .kpi .v { font-size:20px; font-weight:700; }
+  .kpi .l { font-size:11px; color:var(--mut); }
+  .cls { margin:8px 0; }
+  .cls .row { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+  .dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:6px; }
+  .bar { height:6px; background:#0e1320; border-radius:4px; overflow:hidden; }
+  .bar > i { display:block; height:100%; width:0; transition:width .12s; }
+  .controls { display:flex; align-items:center; gap:10px; margin:6px 0 14px; flex-wrap:wrap; }
+  button { background:var(--c0); color:#04101f; border:0; border-radius:8px; padding:9px 16px;
+           font-weight:600; cursor:pointer; }
+  button.sec { background:#222b38; color:var(--txt); }
+  input[type=range] { width:130px; }
+  #log { margin-top:12px; font-size:12px; color:var(--mut); max-height:160px; overflow:auto;
+         border-top:1px solid var(--line); padding-top:8px; }
+  #log div { font-variant-numeric:tabular-nums; }
+  code { background:#0e1320; padding:1px 5px; border-radius:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>👁️ eye — жива детекція</h1>
+  <span id="status">ініціалізація…</span>
+</header>
+
+<div class="controls" style="padding:0 16px;">
+  <button id="start">▶ Увімкнути камеру</button>
+  <button id="stop" class="sec">⏸ Стоп</button>
+  <label>поріг conf: <b id="confv">0.35</b><br><input id="conf" type="range" min="0.1" max="0.9" step="0.05" value="0.35"></label>
+</div>
+
+<div class="wrap">
+  <div class="stage">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+  </div>
+
+  <div class="panel">
+    <h2>Дані розпізнавання</h2>
+    <div class="kpis">
+      <div class="kpi"><div class="v" id="k_fps">—</div><div class="l">FPS</div></div>
+      <div class="kpi"><div class="v" id="k_e2e">—</div><div class="l">затримка, мс</div></div>
+      <div class="kpi"><div class="v" id="k_gpu">—</div><div class="l">інференс GPU, мс</div></div>
+      <div class="kpi"><div class="v" id="k_obj">0</div><div class="l">обʼєктів зараз</div></div>
+    </div>
+
+    <div id="classes"></div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+const CLASSES = [
+  { name:"ceramic_mug", color:getComputedStyle(document.documentElement).getPropertyValue('--c0').trim() },
+  { name:"thermos",     color:getComputedStyle(document.documentElement).getPropertyValue('--c1').trim() },
+  { name:"travel_mug",  color:getComputedStyle(document.documentElement).getPropertyValue('--c2').trim() },
+];
+const video = document.getElementById('video');
+const overlay = document.getElementById('overlay');
+const octx = overlay.getContext('2d');
+const statusEl = document.getElementById('status');
+const confEl = document.getElementById('conf');
+const confvEl = document.getElementById('confv');
+
+const UP_W = 640;                 // ширина кадру для відправки
+let UP_H = 480;
+const capture = document.createElement('canvas');
+const cctx = capture.getContext('2d');
+let streaming = false, inflight = false;
+let confVal = 0.35;
+let fpsTimes = [];
+let seenMax = [0,0,0];
+
+confEl.oninput = () => { confVal = parseFloat(confEl.value); confvEl.textContent = confVal.toFixed(2); };
+
+function setStatus(t){ statusEl.textContent = t; }
+function log(t){
+  const d = document.getElementById('log');
+  const line = document.createElement('div');
+  line.textContent = t;
+  d.prepend(line);
+  while (d.childNodes.length > 40) d.removeChild(d.lastChild);
+}
+
+function buildClasses(){
+  const wrap = document.getElementById('classes');
+  wrap.innerHTML = '';
+  CLASSES.forEach((c,i)=>{
+    wrap.insertAdjacentHTML('beforeend', `
+      <div class="cls">
+        <div class="row">
+          <span><span class="dot" style="background:${c.color}"></span>${c.name}</span>
+          <span><b id="cnt${i}">0</b> · <span id="cf${i}" style="color:var(--mut)">0%</span></span>
+        </div>
+        <div class="bar"><i id="bar${i}" style="background:${c.color}"></i></div>
+      </div>`);
+  });
+}
+buildClasses();
+
+async function startCam(){
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video:{ width:{ideal:1280}, height:{ideal:960} }, audio:false });
+    video.srcObject = stream;
+    await video.play();
+    UP_H = Math.round(UP_W * video.videoHeight / video.videoWidth) || 480;
+    capture.width = UP_W; capture.height = UP_H;
+    overlay.width = UP_W; overlay.height = UP_H;
+    streaming = true;
+    setStatus('камера працює · модель eye_v1');
+    log('камера увімкнена ' + video.videoWidth + '×' + video.videoHeight);
+    loop();
+  } catch(e){
+    setStatus('немає доступу до камери: ' + e.message);
+    log('помилка камери: ' + e.message);
+  }
+}
+
+function stopCam(){
+  streaming = false;
+  if (video.srcObject){ video.srcObject.getTracks().forEach(t=>t.stop()); video.srcObject=null; }
+  octx.clearRect(0,0,overlay.width,overlay.height);
+  setStatus('зупинено');
+}
+
+function drawDets(dets){
+  octx.clearRect(0,0,overlay.width,overlay.height);
+  octx.lineWidth = 2; octx.font = '600 14px system-ui'; octx.textBaseline = 'bottom';
+  for (const d of dets){
+    const c = CLASSES[d.cls] ? CLASSES[d.cls].color : '#fff';
+    const [x1,y1,x2,y2] = d.box;
+    octx.strokeStyle = c;
+    octx.strokeRect(x1,y1,x2-x1,y2-y1);
+    const label = `${d.name} ${(d.conf*100).toFixed(0)}%`;
+    const tw = octx.measureText(label).width + 8;
+    octx.fillStyle = c;
+    octx.fillRect(x1, Math.max(0,y1-18), tw, 18);
+    octx.fillStyle = '#04101f';
+    octx.fillText(label, x1+4, Math.max(16,y1-3));
+  }
+}
+
+function updateStats(json, e2e){
+  // fps (rolling over last ~1s)
+  const now = performance.now();
+  fpsTimes.push(now);
+  fpsTimes = fpsTimes.filter(t => now - t < 1000);
+  document.getElementById('k_fps').textContent = fpsTimes.length;
+  document.getElementById('k_e2e').textContent = Math.round(e2e);
+  document.getElementById('k_gpu').textContent = json.infer_ms;
+  document.getElementById('k_obj').textContent = json.dets.length;
+
+  const cnt = [0,0,0], best = [0,0,0];
+  for (const d of json.dets){
+    if (d.cls>=0 && d.cls<3){ cnt[d.cls]++; if (d.conf>best[d.cls]) best[d.cls]=d.conf; }
+  }
+  for (let i=0;i<3;i++){
+    document.getElementById('cnt'+i).textContent = cnt[i];
+    document.getElementById('cf'+i).textContent = (best[i]*100).toFixed(0)+'%';
+    document.getElementById('bar'+i).style.width = (best[i]*100)+'%';
+    if (best[i] > seenMax[i]) seenMax[i] = best[i];
+  }
+}
+
+async function loop(){
+  if (!streaming) return;
+  if (inflight){ requestAnimationFrame(loop); return; }
+  inflight = true;
+  cctx.drawImage(video, 0, 0, UP_W, UP_H);
+  const blob = await new Promise(r => capture.toBlob(r, 'image/jpeg', 0.6));
+  const fd = new FormData();
+  fd.append('frame', blob, 'f.jpg');
+  const t0 = performance.now();
+  try {
+    const resp = await fetch('/infer?conf=' + confVal, { method:'POST', body: fd });
+    const json = await resp.json();
+    const e2e = performance.now() - t0;
+    drawDets(json.dets);
+    updateStats(json, e2e);
+  } catch(e){
+    setStatus('помилка інференсу: ' + e.message);
+  } finally {
+    inflight = false;
+    requestAnimationFrame(loop);
+  }
+}
+
+document.getElementById('start').onclick = startCam;
+document.getElementById('stop').onclick = stopCam;
+setStatus('готово — натисни «Увімкнути камеру»');
+</script>
+</body>
+</html>
