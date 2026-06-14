@@ -11,6 +11,9 @@
     uvicorn app:app --app-dir web --host 0.0.0.0 --port 8000
 """
 import csv
+import shutil
+import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -122,3 +125,76 @@ def capture(frame: UploadFile = File(...)):
     name = f"cap_{int(time.time() * 1000)}.jpg"
     (d / name).write_bytes(raw)
     return {"saved": name}
+
+
+TRAIN = {"proc": None, "name": None}
+
+
+def _final_metrics(csvp):
+    with open(csvp, encoding="utf-8") as f:
+        r = csv.reader(f)
+        header = [h.strip() for h in next(r)]
+        rows = [x for x in r if x and len(x) >= len(header)]
+    if not rows:
+        return None
+    idx = {n: i for i, n in enumerate(header)}
+
+    def val(row, k):
+        try:
+            return float(row[idx[k]]) if k in idx else None
+        except ValueError:
+            return None
+
+    key = "metrics/mAP50-95(B)"
+    best = rows[-1]
+    for row in rows:
+        v = val(row, key)
+        if v is not None and (val(best, key) is None or v > val(best, key)):
+            best = row
+
+    def g(k):
+        v = val(best, k)
+        return round(v, 4) if v is not None else None
+
+    return {"epochs": len(rows), "mAP50": g("metrics/mAP50(B)"), "mAP5095": g("metrics/mAP50-95(B)"),
+            "P": g("metrics/precision(B)"), "R": g("metrics/recall(B)")}
+
+
+@app.get("/runs")
+def runs():
+    out = []
+    if RUNS.exists():
+        for csvp in RUNS.glob("*/results.csv"):
+            m = _final_metrics(csvp)
+            if m:
+                out.append({"name": csvp.parent.name, "mtime": csvp.stat().st_mtime, **m})
+    out.sort(key=lambda x: x["mtime"], reverse=True)
+    return {"runs": out}
+
+
+@app.post("/train")
+def train_run(model: str = "m", epochs: int = 100):
+    if model not in ("n", "s", "m"):
+        model = "m"
+    epochs = max(10, min(int(epochs), 600))
+    if TRAIN["proc"] is not None and TRAIN["proc"].poll() is None:
+        return {"error": f"вже триває: {TRAIN['name']}"}
+    repo = ROOT.parent
+    ds = repo / "datasets" / "eye-local"
+    if ds.exists():
+        shutil.rmtree(ds, ignore_errors=True)
+    sp = subprocess.run([sys.executable, "split_dataset.py", "--src", "data_raw/images", "--out", "datasets/eye-local"],
+                        cwd=str(repo), capture_output=True, text=True)
+    if sp.returncode != 0:
+        return {"error": "split: " + (sp.stderr or sp.stdout)[-300:]}
+    (repo / "runs").mkdir(parents=True, exist_ok=True)
+    existing = [p.name for p in RUNS.glob("iter*")] if RUNS.exists() else []
+    name = f"iter{len(existing) + 1}"
+    logf = open(repo / "runs" / f"train_{name}.log", "w")
+    proc = subprocess.Popen(
+        ["yolo", "detect", "train", f"model=yolov8{model}.pt", "data=datasets/eye-local/data.yaml",
+         f"epochs={epochs}", "imgsz=640", "batch=16", "device=0", f"name={name}"],
+        cwd=str(repo), stdout=logf, stderr=subprocess.STDOUT)
+    TRAIN["proc"] = proc
+    TRAIN["name"] = name
+    return {"started": name, "model": model, "epochs": epochs}

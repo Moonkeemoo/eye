@@ -6,133 +6,171 @@
 <title>eye — навчання наживо</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
-  :root{ --bg:#0e1116; --panel:#171c24; --line:#262d3a; --txt:#e6edf3; --mut:#8b97a7;
-         --good:#51cf66; --bad:#ff6b6b; --blue:#4ea1ff; }
+  :root{ --bg:#0e1116; --panel:#171c24; --line:#262d3a; --txt:#e6edf3; --mut:#8b97a7; --c0:#4ea1ff; }
   *{ box-sizing:border-box; }
-  body{ margin:0; background:var(--bg); color:var(--txt);
-        font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
-  header{ padding:14px 18px; border-bottom:1px solid var(--line); }
-  header h1{ margin:0; font-size:17px; }
-  #status{ color:var(--mut); font-size:13px; margin-top:4px; }
-  .kpis{ display:flex; gap:12px; padding:14px 18px; flex-wrap:wrap; }
-  .kpi{ background:var(--panel); border:1px solid var(--line); border-radius:10px;
-        padding:10px 16px; min-width:130px; }
-  .kpi .v{ font-size:26px; font-weight:800; }
-  .kpi .l{ font-size:12px; color:var(--mut); }
-  .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:14px; padding:0 18px 24px; }
+  body{ margin:0; background:var(--bg); color:var(--txt); font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  header{ padding:12px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  header h1{ margin:0; font-size:16px; }
+  nav a{ color:var(--mut); text-decoration:none; margin-right:14px; font-size:13px; }
+  nav a.on{ color:var(--txt); font-weight:700; }
+  #status,#dbg{ color:var(--mut); font-size:12px; }
+  .bar{ display:flex; gap:10px; align-items:center; padding:12px 18px; flex-wrap:wrap; }
+  .bar .grp{ display:flex; gap:8px; align-items:center; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px 12px; }
+  button{ background:var(--c0); color:#04101f; border:0; border-radius:8px; padding:9px 16px; font-weight:700; cursor:pointer; }
+  select,input{ background:#0e1320; color:var(--txt); border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
+  #trainmsg{ font-size:13px; color:var(--mut); }
+  .kpis{ display:flex; gap:10px; padding:0 18px; flex-wrap:wrap; }
+  .kpi{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:9px 15px; min-width:120px; }
+  .kpi .v{ font-size:22px; font-weight:800; } .kpi .l{ font-size:11px; color:var(--mut); }
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:14px 18px 4px; }
+  @media (max-width:820px){ .grid{ grid-template-columns:1fr; } }
   .card{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
   .card .top{ display:flex; align-items:center; gap:8px; }
-  .card h3{ margin:0; font-size:15px; }
-  .arrow{ font-size:12px; color:var(--mut); }
+  .card h3{ margin:0; font-size:15px; } .pill{ font-size:11px; padding:2px 7px; border-radius:999px; background:#0e1320; color:var(--mut); }
+  .now{ font-size:12px; color:var(--mut); }
   .why{ color:var(--mut); font-size:12.5px; margin:6px 0 10px; }
-  .now{ font-weight:700; }
-  canvas{ max-height:200px; }
-  .pill{ font-size:11px; padding:2px 7px; border-radius:999px; background:#0e1320; color:var(--mut); }
+  canvas{ max-height:300px; }
+  .hist{ margin:6px 18px 26px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .hist h3{ margin:0 0 10px; font-size:15px; }
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  td,th{ text-align:left; padding:6px 6px; border-bottom:1px solid var(--line); }
+  th{ color:var(--mut); font-weight:600; font-size:11px; text-transform:uppercase; }
+  tr.cur td{ color:#fff; } .best{ color:#51cf66; font-weight:700; }
 </style>
 </head>
 <body>
 <header>
-  <h1>👁️ eye — навчання моделі наживо</h1>
-  <nav style="margin:4px 0">
-    <a href="/" style="color:#e6edf3;font-weight:700;text-decoration:none;margin-right:14px;font-size:13px">📈 Навчання</a>
-    <a href="/camera" style="color:#8b97a7;text-decoration:none;font-size:13px">🎥 Трекінг</a>
-  </nav>
-  <div id="status">підключення…</div>
+  <h1>👁️ eye — навчання</h1>
+  <nav><a href="/" class="on">📈 Навчання</a><a href="/camera">🎥 Трекінг</a></nav>
+  <span id="status">підключення…</span>
+  <span id="dbg">build dash-3</span>
 </header>
+
+<div class="bar">
+  <div class="grp">
+    <span>🚀 Нова ітерація:</span>
+    модель <select id="model"><option value="n">n (швидка)</option><option value="s">s</option><option value="m" selected>m (точна)</option></select>
+    епох <input id="epochs" type="number" value="100" min="10" max="600" style="width:74px">
+    <button id="run">Запустити</button>
+  </div>
+  <span id="trainmsg"></span>
+</div>
 
 <div class="kpis">
   <div class="kpi"><div class="v" id="k_map">—</div><div class="l">Загальна якість (mAP50-95)</div></div>
-  <div class="kpi"><div class="v" id="k_rec">—</div><div class="l">Повнота (скільки знаходить)</div></div>
-  <div class="kpi"><div class="v" id="k_prec">—</div><div class="l">Точність (як рідко помиляється)</div></div>
+  <div class="kpi"><div class="v" id="k_rec">—</div><div class="l">Повнота</div></div>
+  <div class="kpi"><div class="v" id="k_prec">—</div><div class="l">Точність</div></div>
 </div>
 
 <div class="grid" id="grid"></div>
 
+<div class="hist">
+  <h3>Історія прогонів</h3>
+  <table>
+    <thead><tr><th>ран</th><th>епох</th><th>mAP50</th><th>mAP50-95</th><th>повнота</th><th>точність</th></tr></thead>
+    <tbody id="histbody"></tbody>
+  </table>
+</div>
+
 <script>
-const RUN = "detect_v4m";
-
-// опис кожного графіка «з точки зору продукту»
 const CARDS = [
-  { id:"map5095", key:"metrics/mAP50-95(B)", title:"Загальна якість (mAP50-95)", color:"#51cf66", up:true,
-    why:"Головна одна цифра: наскільки точно модель знаходить предмети — і правильним класом, і акуратною рамкою. 0–1, більше = краще. Це «наскільки модель готова»." },
-  { id:"map50", key:"metrics/mAP50(B)", title:"Якість (мʼякший поріг, mAP50)", color:"#7bd88f", up:true,
-    why:"Та сама оцінка, але прощає неточні рамки. Простіша версія — зазвичай вища за mAP50-95." },
-  { id:"rec", key:"metrics/recall(B)", title:"Повнота (recall)", color:"#4ea1ff", up:true,
-    why:"Зі всіх справжніх предметів у кадрі скільки модель реально знаходить. Низька = пропускає предмети (саме це ми лікували — на маку вона багато не бачила)." },
-  { id:"prec", key:"metrics/precision(B)", title:"Точність (precision)", color:"#9b8cff", up:true,
-    why:"Коли модель каже «це предмет» — як часто вона права. Низька = багато хибних тривог (показує те, чого нема)." },
-  { id:"tl", key:"__train_loss__", title:"Помилка навчання (train)", color:"#ffa94d", up:false,
-    why:"Наскільки модель помиляється на прикладах, які бачить під час тренування. Має ПАДАТИ — це і означає «вчиться»." },
-  { id:"vl", key:"__val_loss__", title:"Помилка на перевірці (val)", color:"#ff6b6b", up:false,
-    why:"Помилка на НЕбачених прикладах. Якщо train падає, а val починає рости — модель «зубрить» напамʼять (overfitting), а не вчиться узагальнювати." },
+  {id:"mAP5095", title:"Загальна якість (mAP50-95)", color:"#51cf66", up:true, why:"Головна одна цифра якості: наскільки точно модель знаходить предмети рамкою. 0–1, більше = краще."},
+  {id:"mAP50",   title:"Якість (мʼякший поріг, mAP50)", color:"#7bd88f", up:true, why:"Та сама оцінка, але прощає неточні рамки — зазвичай вища."},
+  {id:"R",       title:"Повнота (recall)", color:"#4ea1ff", up:true, why:"Зі всіх справжніх предметів скільки модель знаходить. Низька = пропускає."},
+  {id:"P",       title:"Точність (precision)", color:"#9b8cff", up:true, why:"Коли модель каже «це предмет» — як часто права. Низька = хибні тривоги."},
+  {id:"TL",      title:"Помилка навчання (train)", color:"#ffa94d", up:false, why:"Помилка на прикладах, що бачить. Має ПАДАТИ — це «вчиться»."},
+  {id:"VL",      title:"Помилка на перевірці (val)", color:"#ff6b6b", up:false, why:"Помилка на НЕбачених. Росте, поки train падає → переучування."},
 ];
-
-const charts = {};
+const charts={};
 function buildCards(){
-  const grid = document.getElementById("grid");
-  for (const c of CARDS){
-    const el = document.createElement("div");
-    el.className = "card";
-    el.innerHTML = `
-      <div class="top">
-        <h3>${c.title}</h3>
-        <span class="pill">${c.up ? "вище = краще ▲" : "нижче = краще ▼"}</span>
-        <span class="arrow now" id="now_${c.id}"></span>
-      </div>
-      <div class="why">${c.why}</div>
-      <canvas id="cv_${c.id}"></canvas>`;
+  const grid=document.getElementById("grid");
+  for(const c of CARDS){
+    const el=document.createElement("div"); el.className="card";
+    el.innerHTML=`<div class="top"><h3>${c.title}</h3><span class="pill">${c.up?"вище = краще ▲":"нижче = краще ▼"}</span><span class="now" id="now_${c.id}"></span></div><div class="why">${c.why}</div><canvas id="cv_${c.id}"></canvas>`;
     grid.appendChild(el);
-    charts[c.id] = new Chart(document.getElementById("cv_"+c.id), {
+    charts[c.id]=new Chart(document.getElementById("cv_"+c.id),{
       type:"line",
-      data:{ labels:[], datasets:[{ data:[], borderColor:c.color, backgroundColor:c.color+"22",
-              borderWidth:2, pointRadius:0, tension:.25, fill:true }] },
-      options:{ animation:false, plugins:{ legend:{display:false} },
-        scales:{ x:{ ticks:{color:"#8b97a7",maxTicksLimit:6}, grid:{color:"#1e2530"}, title:{display:true,text:"епоха",color:"#8b97a7"} },
-                 y:{ ticks:{color:"#8b97a7"}, grid:{color:"#1e2530"} } } }
+      data:{ datasets:[
+        {label:"попередній ран", data:[], borderColor:"rgba(150,160,185,.5)", borderDash:[6,4], borderWidth:1.5, pointRadius:0, tension:.25},
+        {label:"поточний", data:[], borderColor:c.color, backgroundColor:c.color+"22", borderWidth:2, pointRadius:0, tension:.25, fill:true},
+      ]},
+      options:{ animation:false, parsing:false, plugins:{legend:{labels:{color:"#8b97a7",boxWidth:10,font:{size:10}}}},
+        scales:{ x:{type:"linear",ticks:{color:"#8b97a7",maxTicksLimit:6},grid:{color:"#1e2530"},title:{display:true,text:"епоха",color:"#8b97a7"}},
+                 y:{ticks:{color:"#8b97a7"},grid:{color:"#1e2530"}} } }
     });
   }
 }
 buildCards();
 
-function fmt(v){ return (v==null||isNaN(v)) ? "—" : v.toFixed(3); }
-function setStatus(t){ document.getElementById("status").textContent = t; }
+function seriesFor(j,key){
+  const s=j.series, ep=j.epochs;
+  if(key==="TL") return ep.map((_,i)=>(s["train/box_loss"][i]||0)+(s["train/cls_loss"][i]||0)+(s["train/dfl_loss"][i]||0));
+  if(key==="VL") return ep.map((_,i)=>(s["val/box_loss"][i]||0)+(s["val/cls_loss"][i]||0)+(s["val/dfl_loss"][i]||0));
+  const m={mAP5095:"metrics/mAP50-95(B)",mAP50:"metrics/mAP50(B)",R:"metrics/recall(B)",P:"metrics/precision(B)"};
+  return s[m[key]]||[];
+}
+const pts=(ep,arr)=>ep.map((e,i)=>({x:e,y:arr[i]}));
+function fmt(v){ return (v==null||isNaN(v))?"—":Number(v).toFixed(3); }
+const setStatus=t=>document.getElementById("status").textContent=t;
+
+let prevRunName=null;
+async function setPrev(name){
+  if(name===prevRunName) return; prevRunName=name;
+  let data=null;
+  if(name){ try{ data=await (await fetch("/progress?run="+name)).json(); }catch(e){} }
+  for(const c of CARDS){
+    charts[c.id].data.datasets[0].data = (data&&data.exists)? pts(data.epochs,seriesFor(data,c.id)) : [];
+    charts[c.id].data.datasets[0].label = name? "попередній: "+name : "попередній ран";
+    charts[c.id].update();
+  }
+}
+
+async function renderRuns(curName){
+  let j; try{ j=await (await fetch("/runs")).json(); }catch(e){ return; }
+  const runs=j.runs||[];
+  const best=runs.reduce((b,r)=> (r.mAP5095!=null && (!b||r.mAP5095>b.mAP5095))?r:b, null);
+  const tb=document.getElementById("histbody"); tb.innerHTML="";
+  for(const r of runs){
+    const isCur=r.name===curName, isBest=best&&r.name===best.name;
+    tb.insertAdjacentHTML("beforeend",
+      `<tr class="${isCur?'cur':''}"><td>${isCur?'▶ ':''}${r.name}${isBest?' 🏆':''}</td><td>${r.epochs}</td><td>${fmt(r.mAP50)}</td><td class="${isBest?'best':''}">${fmt(r.mAP5095)}</td><td>${fmt(r.R)}</td><td>${fmt(r.P)}</td></tr>`);
+  }
+  // попередній = найновіший ран, що не поточний
+  const prev=runs.find(r=>r.name!==curName);
+  setPrev(prev?prev.name:null);
+}
 
 async function poll(){
-  let j;
-  try { j = await (await fetch("/progress?run="+RUN)).json(); }
-  catch(e){ setStatus("немає звʼязку із сервером…"); setTimeout(poll, 4000); return; }
-
-  if (!j.exists || !j.epochs.length){ setStatus("очікую перші епохи навчання…"); setTimeout(poll, 3000); return; }
-
-  const ep = j.epochs, s = j.series;
-  const sum = (a,i)=> (s[a[0]][i]||0)+(s[a[1]][i]||0)+(s[a[2]][i]||0);
-  const tl = ep.map((_,i)=> sum(["train/box_loss","train/cls_loss","train/dfl_loss"],i));
-  const vl = ep.map((_,i)=> sum(["val/box_loss","val/cls_loss","val/dfl_loss"],i));
-
-  const dataFor = id => id==="tl" ? tl : id==="vl" ? vl : s[CARDS.find(c=>c.id===id).key];
-  for (const c of CARDS){
-    const arr = dataFor(c.id);
-    const ch = charts[c.id];
-    ch.data.labels = ep; ch.data.datasets[0].data = arr; ch.update();
-    document.getElementById("now_"+c.id).textContent = "зараз: " + fmt(arr[arr.length-1]);
-  }
-
-  const last = ep.length-1;
-  document.getElementById("k_map").textContent  = fmt(s["metrics/mAP50-95(B)"][last]);
-  document.getElementById("k_rec").textContent  = fmt(s["metrics/recall(B)"][last]);
-  document.getElementById("k_prec").textContent = fmt(s["metrics/precision(B)"][last]);
-
-  const cur = ep[last], tot = j.total || "?";
-  const idle = j.idle_s || 0;
-  const finished = ((typeof tot === "number") && cur >= tot) || idle > 12;
-  let msg = `Епоха ${cur}` + (typeof tot === "number" ? ` / ${tot}` : "");
-  if (finished) msg += (typeof tot === "number" && cur < tot)
-        ? " · готово ✅ (рання зупинка — далі не покращувалось)" : " · готово ✅";
-  else msg += " · триває… (оновлюється саме)";
-  setStatus(msg);
-  setTimeout(poll, finished ? 15000 : 3500);
+  let j; try{ j=await (await fetch("/progress")).json(); }catch(e){ setStatus("немає звʼязку…"); setTimeout(poll,4000); return; }
+  if(j.exists && j.epochs.length){
+    for(const c of CARDS){
+      const arr=seriesFor(j,c.id);
+      charts[c.id].data.datasets[1].data=pts(j.epochs,arr);
+      charts[c.id].data.datasets[1].label="поточний: "+j.run;
+      charts[c.id].update();
+      document.getElementById("now_"+c.id).textContent="зараз: "+fmt(arr[arr.length-1]);
+    }
+    const last=j.epochs.length-1;
+    document.getElementById("k_map").textContent=fmt(seriesFor(j,"mAP5095")[last]);
+    document.getElementById("k_rec").textContent=fmt(seriesFor(j,"R")[last]);
+    document.getElementById("k_prec").textContent=fmt(seriesFor(j,"P")[last]);
+    const cur=j.epochs[last], tot=j.total, idle=j.idle_s||0;
+    const fin=((typeof tot==="number")&&cur>=tot)||idle>12;
+    setStatus(`[${j.run}] епоха ${cur}${typeof tot==="number"?" / "+tot:""}`+(fin?(typeof tot==="number"&&cur<tot?" · готово ✅ (рання зупинка)":" · готово ✅"):" · триває…"));
+    await renderRuns(j.run);
+    setTimeout(poll, fin?8000:3500);
+  } else { setStatus("очікую перші епохи…"); await renderRuns(null); setTimeout(poll,3000); }
 }
 poll();
+
+document.getElementById("run").onclick=async ()=>{
+  const model=document.getElementById("model").value, epochs=document.getElementById("epochs").value;
+  const m=document.getElementById("trainmsg"); m.textContent="запускаю… (переріз датасету + старт)";
+  try{
+    const j=await (await fetch(`/train?model=${model}&epochs=${epochs}`,{method:"POST"})).json();
+    m.textContent = j.error ? ("⚠ "+j.error) : `🚀 запущено ${j.started} (yolov8${j.model}, ${j.epochs} еп.) — графік підхопить за кілька секунд`;
+  }catch(e){ m.textContent="⚠ помилка запуску: "+e.message; }
+};
 </script>
 </body>
 </html>
