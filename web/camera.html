@@ -44,7 +44,7 @@
   <h1>👁️ eye</h1>
   <nav><a href="/">📈 Навчання</a><a href="/camera" class="on">🎥 Трекінг</a></nav>
   <span id="status">готово — натисни «Увімкнути камеру»</span>
-  <span id="dbg">build single-canvas-8 · 🎬 запис даних</span>
+  <span id="dbg">build single-canvas-9 · 🧠 вибір моделі</span>
 </header>
 
 <div class="controls">
@@ -53,6 +53,7 @@
   <button id="capture" class="sec">📸 Зберегти кадр (<span id="savecnt">0</span>)</button>
   <button id="reset" class="sec">↺ Скинути статистику</button>
   <label>conf: <b id="confv">0.35</b> <input id="conf" type="range" min="0.1" max="0.9" step="0.05" value="0.35"></label>
+  <label>🧠 модель: <select id="modelsel"></select></label>
   <span id="lock">🎯 клікни на об'єкт, щоб вести його</span>
 </div>
 
@@ -152,7 +153,7 @@ async function startCam(){
     video.srcObject=st;
     await new Promise(res=>{ if(video.readyState>=1 && video.videoWidth) return res(); video.onloadedmetadata=()=>res(); });
     await video.play(); sizeFromVideo();
-    streaming=true; setStatus("трекінг працює · модель eye_iter2"); loop();
+    streaming=true; setStatus("трекінг працює · модель "+(document.getElementById("modelsel").value||"")); loop();
   }catch(e){ setStatus("немає доступу до камери: "+e.message); }
 }
 function stopCam(){ streaming=false; if(video.srcObject){video.srcObject.getTracks().forEach(t=>t.stop());video.srcObject=null;} setStatus("зупинено"); }
@@ -254,6 +255,22 @@ async function loop(){
   }catch(e){ setStatus("помилка: "+e.message); }
   finally{ inflight=false; requestAnimationFrame(loop); }
 }
+
+async function loadModels(){
+  try{
+    const j=await (await fetch("/models")).json();
+    const sel=document.getElementById("modelsel"); sel.innerHTML="";
+    for(const m of j.models){ const o=document.createElement("option"); o.value=m; o.textContent=m; if(m===j.current)o.selected=true; sel.appendChild(o); }
+  }catch(e){}
+}
+loadModels();
+document.getElementById("modelsel").onchange=async e=>{
+  const name=e.target.value; setStatus("перемикаю модель → "+name+" …");
+  try{ const j=await (await fetch("/model?name="+name,{method:"POST"})).json();
+    clsHist.clear();
+    setStatus(j.error?("⚠ "+j.error):("трекінг працює · модель "+j.current));
+  }catch(err){ setStatus("⚠ "+err.message); }
+};
 
 document.getElementById("start").onclick=startCam;
 document.getElementById("stop").onclick=stopCam;

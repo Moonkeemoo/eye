@@ -27,7 +27,24 @@ from ultralytics import YOLO
 
 ROOT = Path(__file__).resolve().parent
 RUNS = ROOT.parent / "runs" / "detect"
-MODEL = YOLO(str(ROOT.parent / "models" / "eye_iter2.pt"))
+MODELS_DIR = ROOT.parent / "models"
+_LOADED = {}
+
+
+def _avail():
+    return sorted(p.stem for p in MODELS_DIR.glob("*.pt"))
+
+
+def _model(name):
+    if name not in _LOADED:
+        _LOADED[name] = YOLO(str(MODELS_DIR / (name + ".pt")))
+    return _LOADED[name]
+
+
+_av = _avail()
+ACTIVE = {"name": "eye_iter2" if "eye_iter2" in _av else (_av[0] if _av else None)}
+if ACTIVE["name"]:
+    _model(ACTIVE["name"])
 LOCK = threading.Lock()
 DETLOG = deque(maxlen=6000)
 
@@ -107,7 +124,7 @@ def track(frame: UploadFile = File(...), conf: float = 0.35):
     h, w = img.shape[:2]
     t0 = time.perf_counter()
     with LOCK:
-        r = MODEL.track(img, persist=True, conf=conf, imgsz=640, verbose=False)[0]
+        r = _model(ACTIVE["name"]).track(img, persist=True, conf=conf, imgsz=640, verbose=False)[0]
     infer_ms = round((time.perf_counter() - t0) * 1000, 1)
     dets = []
     for b in r.boxes:
@@ -141,6 +158,21 @@ def detstats(reset: int = 0):
     return {"frames": frames, "classes": out}
 
 
+@app.get("/models")
+def list_models():
+    return {"models": _avail(), "current": ACTIVE["name"]}
+
+
+@app.post("/model")
+def set_model(name: str):
+    if name not in _avail():
+        return JSONResponse({"error": "немає моделі: " + name}, status_code=400)
+    with LOCK:
+        _model(name)
+        ACTIVE["name"] = name
+    return {"current": name}
+
+
 @app.post("/capture")
 def capture(frame: UploadFile = File(...)):
     raw = frame.file.read()
@@ -160,7 +192,7 @@ def record(frame: UploadFile = File(...), cls: int = 2, conf: float = 0.25):
     cls = int(cls)
     h, w = img.shape[:2]
     with LOCK:
-        r = MODEL.predict(img, conf=conf, imgsz=640, verbose=False)[0]
+        r = _model(ACTIVE["name"]).predict(img, conf=conf, imgsz=640, verbose=False)[0]
     names = {0: "ceramic_mug", 1: "thermos", 2: "travel_mug"}
     if len(r.boxes) == 0:
         return {"saved": False, "dets": []}
