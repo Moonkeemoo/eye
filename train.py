@@ -36,7 +36,7 @@ DATA_YAML = "datasets/eye-local/data.yaml"   # згенеровано split_data
 # yolov8n.pt — передтренована на COCO (мільйони фото). Вона вже вміє бачити
 # краї/текстури/форми; ми лише доналаштовуємо її під наші 3 класи.
 # Тому й вистачає сотень фото, а не мільйонів.
-model = YOLO("yolov8n.pt")   # n = nano (найлегша й найшвидша)
+model = YOLO("yolov8m.pt")   # m = medium — наш найкращий баланс точність/швидкість
 
 
 # =============================================================
@@ -44,13 +44,13 @@ model = YOLO("yolov8n.pt")   # n = nano (найлегша й найшвидша)
 # =============================================================
 results = model.train(
     data=DATA_YAML,
-    epochs=50,         # скільки разів пройти весь датасет (мало -> недонавчання, багато -> overfitting)
+    epochs=150,        # стеля епох; реально зупинить patience на найкращій
     imgsz=640,         # усе ресайзиться до 640x640
     batch=16,          # фото за раз; 4070 Ti SUPER (16 ГБ) потягне й більше
-    patience=10,       # рання зупинка: стоп, якщо val не кращає 10 епох (захист від overfitting)
+    patience=100,      # рання зупинка: стоп, якщо val не кращає 100 епох (беремо best.pt)
     device=0,          # GPU 0 = RTX 4070 Ti SUPER
-    name="detect_v1",  # папка результатів: runs/detect/detect_v1
+    name="detect",     # папка результатів: runs/detect/detect
 )
 
-print("Готово. Найкращі ваги -> runs/detect/detect_v1/weights/best.pt")
-print("Метрики й графіки -> runs/detect/detect_v1/")
+print("Готово. Найкращі ваги -> runs/detect/detect/weights/best.pt")
+print("Метрики й графіки -> runs/detect/detect/")
